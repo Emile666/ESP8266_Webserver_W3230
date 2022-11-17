@@ -7,9 +7,6 @@
 #include <WiFiUdp.h>
 #include <algorithm>
 
-//#include "Page1.h"
-//#include "Page2.h"
-#include "Page3.h"
 #include "Chart1_html.h"
 #include "Chart2_html.h"
 #include "Chart3_html.h"
@@ -45,8 +42,6 @@ IPAddress localIP;
 IPAddress localGateway;
 IPAddress subnet(255, 255, 0, 0);
 
-const char params[MAXPARAMS][9] = {"sp","hy","hy2","tc","tc2","SA","cd","hd","cf","Kc","Ti","Td","Ts","Fan","Flo","Fhi","Hpl","Hpt","rn"};
-
 uint16_t  pars[MAXPARAMS];                 // parameter values retrieved from temp controller
 uint16_t  prof[MAXPROFILES][PROFILE_SIZE]; // profile data values retrieved from temp controller
 uint16_t  count = 0;
@@ -62,8 +57,7 @@ boolean   restart = false;
 int16_t  t1,t2,ow;   // Temp1, Temp2, One-Wire Temp
 uint8_t  hc;         // heating/cooling
 uint16_t sp;         // Setpoint temp
-bool     pRequest;   // handshake between processor() and serial IO
-uint32_t freeRAM;
+uint32_t freeRAM;    // Amount of free RAM in bytes
 
 //----------------------------------------------------------------------------------
 // This is the setup() function for the ESP8266.
@@ -78,7 +72,7 @@ void setup(void)
   // Load values saved in LittleFS
   ssid = readFile(LittleFS, ssidPath);
   pass = readFile(LittleFS, passPath);
-  Serial.print("Trying to connect to ");
+  Serial.print("Connecting to ");
   Serial.print(ssid);
   Serial.print(" with password ");
   Serial.println(pass);
@@ -86,6 +80,14 @@ void setup(void)
   if (initWiFi())
   {
     normalWebPages();
+    allocateRam();
+    Serial.println("p0"); // send request for Profile 0 to temp. controller
+    Serial.println("p1"); // send request for Profile 1 to temp. controller
+    Serial.println("p2"); // send request for Profile 2 to temp. controller
+    Serial.println("p3"); // send request for Profile 3 to temp. controller
+    Serial.println("p4"); // send request for Profile 4 to temp. controller
+    Serial.println("p5"); // send request for Profile 5 to temp. controller
+    Serial.println("p6"); // send request for parameters to temp. controller
   }
   else
   {
@@ -100,8 +102,6 @@ void setup(void)
   timeClient.setTimeOffset(3600);
   setSyncProvider(syncProvider); // Sync millis() with NTP-time
   timeKeeper = millis() + (POLLPERIOD * 1000);
-  allocateRam();
-  Serial.println("p6"); // send request for parameters to temp. controller
 } // setup()
 
 //----------------------------------------------------------------------------------
@@ -150,37 +150,42 @@ uint8_t execute_single_command(char *s)
         sp  = atoi(p);
         break;
         
+     //-------------------------------------------------------------------
+     // The W3230 Temperature Controller responds to a p0..p6 command
+     // (sent in setup()) with a list of values. This is the data 
+     // from either the parameters (p6) or from a profile (p0..p5).
+     // If any of this data is changed in the W3230, then the profile /
+     // parameter data is also sent again and processed here.
+     //-------------------------------------------------------------------
      case 'p':
         if (num < MAXPROFILES)   
         {  // One of the profiles
            i = 0;
-           p = strtok(&s[3],delim);
-           prof[num][i++] = atoi(p);
+           p = strtok(&s[3],delim);  // start with first data-value
+           prof[num][i++] = atoi(p); // store in profile
            while (i < PROFILE_SIZE)
-           {
+           {  // save all other data-values
               p              = strtok(NULL,delim);
               prof[num][i++] = atoi(p);
            } // while
-           pRequest = true; // flag to signal that data has been read
         } // if
         else if (num == MAXPROFILES)
         { // The parameter section
            i = 0;
-           p = strtok(&s[3],delim);
-           pars[i++] = atoi(p);
+           p = strtok(&s[3],delim);   // start with first data-value
+           pars[i++] = atoi(p);       // store in pars[]
            while (i < PROFILE_SIZE)
-           {
+           {  // save all other data-values
               p         = strtok(NULL,delim);
               pars[i++] = atoi(p);
            } // while
-           pRequest = true; // flag to signal that data has been read
         } // else if
         break;
 
      case 's': // s0: get version info
         if (!num)
         {
-          Serial.println("esp8266_ntp_v010");
+          Serial.println(VERSION);
         } // if
         break;
      default: rval = 1; // ERR
@@ -254,28 +259,22 @@ void loop(void) {
 // This function is a Helper function to convert UNIX time to a String.
 //----------------------------------------------------------------------------------
 void timeAndDate (time_t tt, String& htmlContent ){
-  if (hour(tt) < 10) // If hour is less than ten, it will only be one character. This would mean we would need to place a '0' in front of the character.
-    htmlContent += ("0" + String(hour(tt))+ ":");
-  else
-    htmlContent += (String(hour(tt)) + ":");
+ if (hour(tt) < 10) // Add leading-zero if hour is < 10.
+      htmlContent += ("0" + String(hour(tt))+ ":");
+ else htmlContent += (String(hour(tt)) + ":");
  if (minute(tt) < 10)
-    htmlContent += ("0" + String(minute(tt)) + ":");
- else
-    htmlContent += (String(minute(tt)) + ":");
+      htmlContent += ("0" + String(minute(tt)) + ":");
+ else htmlContent += (String(minute(tt)) + ":");
  if (second(tt) < 10)
-   htmlContent += ("0" + String(second(tt)) + " ");
- else
-   htmlContent += (String(second(tt)) + " ");
- 
+      htmlContent += ("0" + String(second(tt)) + " ");
+ else htmlContent += (String(second(tt)) + " ");
  if (day(tt) < 10)
-   htmlContent += ("0" + String(day(tt))+ "/");
- else
-  htmlContent += (String(day(tt)) + "/");
+      htmlContent += ("0" + String(day(tt))+ "/");
+ else htmlContent += (String(day(tt)) + "/");
  if (month(tt) < 10)
-    htmlContent += ("0" + String(month(tt))+ "/");
-  else
-    htmlContent += (String(month(tt)) + "/");
-  htmlContent += (String(year(tt)));
+      htmlContent += ("0" + String(month(tt))+ "/");
+ else htmlContent += (String(month(tt)) + "/");
+ htmlContent += (String(year(tt)));
 } // timeAndDate()
 
 //--------------------------------------------------------------------------------------
@@ -283,30 +282,17 @@ void timeAndDate (time_t tt, String& htmlContent ){
 //--------------------------------------------------------------------------------------
 void allocateRam(void)
 {
-  //We will allocate as much RAM as we can to track historical data. This means, we need to work out how much RAM we will needed for the TCP stack and enough for the ESP8266 to run. 
-  //Once we get this value, we can allocate the rest of the RAM to the array used to store the temperature and pressure values.
-  //
-  //Each TCP session expires every 2mins. (Default MSL is 2mins for Windows https://technet.microsoft.com/en-us/library/cc938217.aspx)
-  //If using the refresh function on the main page with gauges, then there needs to be enough RAM left to accommodate the TCP sessions from the refresh as well as a little extra for the ESP8266 to run.
-  //196KB RAM per refresh. 
-  //To calculate the amount to leave free;
-  // (number of refreshes in 2 minutes x RAM per REFRESH) + SPARE RAM = ALLOCATED_RAM
-  // 
-  //E.g. For a refresh of every 1 second
-  //(120x196KB) + 10,000 = 33,520
-  //For a refresh of every 3 seconds
-  //(40x196KB) + 10,000 = 17,840
-  //
-  //The less frequent the refresh will result in a smaller value needed to be reserved. And this also mean more RAM can be used to store historical data for a longer period.
-  //If refresh isnt used, then leave ALLOCATED_RAM to 10,000
-  
+  // We will allocate as much RAM as we can to track historical data. 
+  // The ALLOCATED_RAM is a safety margin for heap data. The ESP8266 needs at least 10 kB for
+  // its web-pages.
+
   //Get free RAM in bytes
   uint32_t free=system_get_free_heap_size() - ALLOCATED_RAM;
   
   // Divide the free RAM by the size of the variables used to store the data. 
   // This will allow us to work out the maximum number of records we can store. 
   // All while keeping some RAM free which is specified in ALLOCATED_RAM
-  numberOfRows = free / (sizeof(uint8_t)*45); // temp1 (2), temp2 (2), HorC (1), pid_out (1), One (2), Time (4), each data-line in html (31), spare(2). 
+  numberOfRows = free / (sizeof(uint8_t)*45); // temp1 (2), temp2 (2), HorC (1), One (2), Time (4), each data-line in html (31), spare(3). 
   
   //re-declare the arrays with the number of elements
   t1Data    = new int16_t  [numberOfRows];
@@ -368,33 +354,36 @@ String processor(const String& var)
   return String();
 } // processor()
 
-//----------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------------
 // This function replaces the placeholder text in the html source with actual data.
-// It is used for adding variables to the gauges on the main web-page.
-//----------------------------------------------------------------------------------
+// It is used for adding actual data to the parameter input-boxes on the parameters web-page.
+//--------------------------------------------------------------------------------------------
 String paramProcessor(const String& var)
 {
-  if      (var == "NR0")  return String(pars[0]);
-  else if (var == "NR1")  return String(pars[1]);
-  else if (var == "NR2")  return String(pars[2]);
-  else if (var == "NR3")  return String(pars[3]);
-  else if (var == "NR4")  return String(pars[4]);
-  else if (var == "NR5")  return String(pars[5]);
-  else if (var == "NR6")  return String(pars[6]);
-  else if (var == "NR7")  return String(pars[7]);
-  else if (var == "NR8")  return String(pars[8]);
-  else if (var == "NR9")  return String(pars[9]);
-  else if (var == "NR10") return String(pars[10]);
-  else if (var == "NR11") return String(pars[11]);
-  else if (var == "NR12") return String(pars[12]);
-  else if (var == "NR13") return String(pars[13]);
-  else if (var == "NR14") return String(pars[14]);
-  else if (var == "NR15") return String(pars[15]);
-  else if (var == "NR16") return String(pars[16]);
-  else if (var == "NR17") return String(pars[17]);
-  else if (var == "NR18") return String(pars[18]);
+  if (strncmp(var.c_str(),"NR",2) == 0)
+  { // Parameter numbers are from NR114 until NR132
+     int8_t nr = atoi(var.substring(2).c_str()) - MAXPROFILES*PROFILE_SIZE;
+     if ((nr >= 0) && (nr < MAXPARAMS))
+     return String(pars[nr]);
+  } // if
   return String();
 } // paramProcessor()
+
+//--------------------------------------------------------------------------------------------
+// This function replaces the placeholder text in the html source with actual data.
+// It is used for adding actual data to the parameter input-boxes on the parameters web-page.
+//--------------------------------------------------------------------------------------------
+String profileProcessor(const String& var)
+{
+  if (strncmp(var.c_str(),"NR",2) == 0)
+  { 
+     uint8_t nr    = atoi(var.substring(2).c_str());
+     uint8_t prNr  = (nr / PROFILE_SIZE); // Profile nr
+     uint8_t parNr = (nr % PROFILE_SIZE); // Number within profile
+     return String(prof[prNr][parNr]);
+  } // if
+  return String();
+} // profileProcessor()
 
 //----------------------------------------------------------------------------------
 // This function replaces the placeholder text in the html source with actual data.
@@ -509,11 +498,12 @@ time_t syncProvider(void)
 //----------------------------------------------------------------------------------
 void initFS(void) 
 {
+  Serial.print("\nMounting LittleFS:");
   if (!LittleFS.begin()) {
-    Serial.println("\nAn error has occurred while mounting LittleFS");
+    Serial.println("Error.");
   } // if
   else{
-    Serial.println("\nLittleFS mounted successfully");
+    Serial.println("OK.");
   } // else
 } // initFS()
 
@@ -613,17 +603,51 @@ void normalWebPages(void)
   // Profile Pr0 Page
   //-----------------------
   server.on("/page3", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send_P(200, "text/html", htmlPage3);
+    request->send(LittleFS, "/profile0.html", "text/html", false, profileProcessor);
+  });
+
+  //-----------------------
+  // Profile Pr1 Page
+  //-----------------------
+  server.on("/page4", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(LittleFS, "/profile1.html", "text/html", false, profileProcessor);
+  });
+
+  //-----------------------
+  // Profile Pr2 Page
+  //-----------------------
+  server.on("/page5", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(LittleFS, "/profile2.html", "text/html", false, profileProcessor);
+  });
+
+  //-----------------------
+  // Profile Pr3 Page
+  //-----------------------
+  server.on("/page6", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(LittleFS, "/profile3.html", "text/html", false, profileProcessor);
+  });
+
+  //-----------------------
+  // Profile Pr4 Page
+  //-----------------------
+  server.on("/page7", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(LittleFS, "/profile4.html", "text/html", false, profileProcessor);
+  });
+
+  //-----------------------
+  // Profile Pr5 Page
+  //-----------------------
+  server.on("/page8", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(LittleFS, "/profile5.html", "text/html", false, profileProcessor);
   });
 
   //-----------------------
   // /data.json Page
   //-----------------------
   server.on("/data.json", HTTP_GET, [](AsyncWebServerRequest *request){
-    
-  String html;
-  html  = ("{\"T1\":\"" + String(t1*0.1)  + "\",\"T2\":\""   + String(t2*0.1) + "\",\"HeatCool\":\"" + String(hc) + "\",");
-  html += ("\"SP\":\"" + String(sp*0.1) + "\",\"OW1\":\"" + String(ow*0.1) + "\"}");
+    String html;
+    html  = ("{\"T1\":\"" + String(t1*0.1)  + "\",\"T2\":\""   + String(t2*0.1) + "\",\"HeatCool\":\"" + String(hc) + "\",");
+    html += ("\"SP\":\"" + String(sp*0.1) + "\",\"OW1\":\"" + String(ow*0.1) + "\"}");
     request->send_P(200, "application/json", html.c_str());
   });
 
@@ -684,9 +708,6 @@ void normalWebPages(void)
       i++;
     } // while    
     request->send(LittleFS, "/index.html", "text/html", false, processor); // Back to Home Page
-    //request->send(200, "text/html", "/"); // Return to Home Page
-    //                                 + inputParam + ") with value: " + inputMessage +
-    //                                 "<br><a href=\"/\">Return to Home Page</a>");
   });
 
   server.onNotFound(notFound);
@@ -702,27 +723,25 @@ void APPages(void)
     // Connect to Wi-Fi network with SSID and password
     Serial.println("Setting AP (Access Point)");
     // NULL sets an open Access Point
-    WiFi.softAP("ESP-WIFI-MANAGER", NULL);
+    WiFi.softAP("W3230-WIFI-MANAGER", NULL);
 
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP address: ");
     Serial.println(IP); 
     
     numSsid = WiFi.scanNetworks();
-    Serial.print("Number of available WiFi networks discovered:");
-    Serial.println(numSsid);
     if (numSsid > 20) numSsid = 20;
 
     // print the network number and name for each network found:
     for (int i = 0; i<numSsid; i++) 
     {
-      char s[10];
-      sprintf(s,"%02d) ",i);
-      Serial.print(s);
-      Serial.print(WiFi.SSID(i));
-      Serial.print(", ");
-      Serial.print(WiFi.RSSI(i));
-      Serial.println(" dBm");
+      //char s[10];
+      //sprintf(s,"%02d) ",i);
+      //Serial.print(s);
+      //Serial.print(WiFi.SSID(i));
+      //Serial.print(", ");
+      //Serial.print(WiFi.RSSI(i));
+      //Serial.println(" dBm");
       wifiList[i].name = WiFi.SSID(i);
       wifiList[i].rssi = WiFi.RSSI(i);
     } // for i
