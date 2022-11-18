@@ -8,7 +8,7 @@
 #include <TimeLib.h>
 #include <LittleFS.h>
 
-#define VERSION       "ESP8266_W3230_v011"
+#define VERSION       "ESP8266_W3230_v012"
 #define POLLPERIOD       (60) /* How often (in seconds) to poll for data which is used in the graph */
 #define ALLOCATED_RAM (30000) 
 

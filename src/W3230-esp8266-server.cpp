@@ -364,7 +364,7 @@ String paramProcessor(const String& var)
   { // Parameter numbers are from NR114 until NR132
      int8_t nr = atoi(var.substring(2).c_str()) - MAXPROFILES*PROFILE_SIZE;
      if ((nr >= 0) && (nr < MAXPARAMS))
-     return String(pars[nr]);
+        return String(pars[nr]);
   } // if
   return String();
 } // paramProcessor()
@@ -691,7 +691,7 @@ void normalWebPages(void)
       if (request->hasParam(parName)) 
       {
         int16_t parVal = request->getParam(parName)->value().toInt();
-        inputMessage   = "v" + String(i) + " " + String(parVal); // value
+        inputMessage   = "v" + String(i) + "=" + String(parVal); // value
         if (i < PROFILE_SIZE*MAXPROFILES)
         { // One of the Profile parameters
           oldVal = prof[prNr][parNr];
